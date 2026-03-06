@@ -16,8 +16,10 @@ import AIChat from './components/AIChat.vue'
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  background: #f5f5f5;
+  font-family: 'IBM Plex Sans', system-ui, sans-serif;
+  background: #f7f7f7;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
 }
 
 .app {

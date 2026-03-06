@@ -66,12 +66,49 @@ npm run dev
 npm run build
 ```
 
-## 部署到Vercel
+## 部署到 Vercel
 
-1. 将代码推送到GitHub
-2. 在Vercel中导入项目
-3. 配置环境变量：`OPENAI_API_KEY`（OpenAI）或 `KIMI_API_KEY` + `AI_BASE_URL`（Kimi）
-4. 点击部署
+### 方式一：通过网页（推荐）
+
+1. **把代码推到 Git**
+   - 在 [GitHub](https://github.com) 或 [GitLab](https://gitlab.com) 新建仓库，在项目根目录执行：
+   ```bash
+   git init
+   git add .
+   git commit -m "init"
+   git remote add origin https://github.com/你的用户名/仓库名.git
+   git push -u origin main
+   ```
+
+2. **在 Vercel 里导入项目**
+   - 打开 [vercel.com](https://vercel.com) 并登录（可用 GitHub/GitLab 账号）。
+   - 点击 **Add New… → Project**，选择 **Import Git Repository**，选中刚推送的仓库，点 **Import**。
+
+3. **配置环境变量**
+   - 在 **Environment Variables** 里添加（和本地 `.env` 一致）：
+   - **用 OpenAI**：`OPENAI_API_KEY` = 你的 OpenAI Key。
+   - **用 Kimi**：  
+     `KIMI_API_KEY` = 你的 Kimi Key  
+     `AI_BASE_URL` = `https://api.moonshot.cn/v1`  
+     `AI_MODEL` = `moonshot-v1-8k`
+   - 保存后点 **Deploy**。
+
+4. **等构建完成**
+   - 构建结束后会给你一个 `xxx.vercel.app` 的地址，打开即可使用。
+
+### 方式二：用 Vercel CLI
+
+1. 安装并登录（若未登录）：
+   ```bash
+   npm i -g vercel
+   vercel login
+   ```
+2. 在项目根目录执行：
+   ```bash
+   vercel
+   ```
+   按提示关联项目、配置环境变量（或提前在 Vercel 网页里填好）。  
+   正式上线用：`vercel --prod`。
 
 ## 技术栈
 

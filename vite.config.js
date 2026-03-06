@@ -40,20 +40,38 @@ function localApiPlugin(env) {
             body: JSON.stringify({
               model,
               messages: list.map((m) => ({ role: m.role, content: m.content })),
-              stream: false,
+              stream: true,
             }),
           })
-          const data = await response.json()
-          if (data.error) {
+          if (!response.ok) {
+            const err = await response.json().catch(() => ({}))
             res.statusCode = response.status
             res.setHeader('Content-Type', 'application/json')
-            res.end(JSON.stringify({ message: 'API 错误: ' + (data.error?.message || '请求失败') }))
+            res.end(JSON.stringify({ message: 'API 错误: ' + (err.error?.message || response.statusText) }))
             return
           }
-          const content = data.choices?.[0]?.message?.content ?? ''
+          if (!response.body) {
+            res.statusCode = 500
+            res.setHeader('Content-Type', 'application/json')
+            res.end(JSON.stringify({ message: '无响应体' }))
+            return
+          }
           res.statusCode = 200
-          res.setHeader('Content-Type', 'application/json')
-          res.end(JSON.stringify({ message: content }))
+          res.setHeader('Content-Type', 'text/event-stream')
+          res.setHeader('Cache-Control', 'no-cache')
+          res.setHeader('Connection', 'keep-alive')
+          const reader = response.body.getReader()
+          const decoder = new TextDecoder()
+          try {
+            while (true) {
+              const { value, done } = await reader.read()
+              if (done) break
+              res.write(decoder.decode(value, { stream: true }))
+            }
+          } finally {
+            reader.releaseLock()
+          }
+          res.end()
         } catch (e) {
           res.statusCode = 500
           res.setHeader('Content-Type', 'application/json')

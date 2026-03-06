@@ -38,21 +38,33 @@ export default async function handler(req) {
       }))
     })
 
-    let fullText = ''
-    for await (const chunk of result.textStream) {
-      fullText += chunk
-    }
-
-    return new Response(
-      JSON.stringify({ message: fullText }),
-      {
-        headers: { 'Content-Type': 'application/json' }
+    const encoder = new TextEncoder()
+    const stream = new ReadableStream({
+      async start(controller) {
+        try {
+          for await (const chunk of result.textStream) {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: chunk })}\n\n`))
+          }
+          controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+        } catch (e) {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ error: e?.message || 'stream error' })}\n\n`))
+        } finally {
+          controller.close()
+        }
       }
-    )
+    })
+
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive'
+      }
+    })
   } catch (error) {
     console.error('API Error:', error)
     return new Response(
-      JSON.stringify({ error: '服务器错误' }),
+      JSON.stringify({ message: error?.message || '服务器错误' }),
       {
         status: 500,
         headers: { 'Content-Type': 'application/json' }
