@@ -1,9 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(git init)",
-      "Bash(git remote add origin https://github.com/heartrainy/vue-ai-chat.git)",
-      "Bash(git add .)"
+      "Bash(tree:*)",
+      "Bash(npm install)"
     ]
   }
 }

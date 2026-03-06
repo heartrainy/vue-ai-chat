@@ -1,123 +1,62 @@
+import { createOpenAI } from '@ai-sdk/openai'
+import { streamText } from 'ai'
+
 export const config = {
-  runtime: 'edge',
-}
-
-function json(data, { status = 200, headers = {} } = {}) {
-  return new Response(JSON.stringify(data), {
-    status,
-    headers: {
-      'content-type': 'application/json; charset=utf-8',
-      ...headers,
-    },
-  })
-}
-
-function withCors(res, origin) {
-  const h = new Headers(res.headers)
-  h.set('access-control-allow-origin', origin || '*')
-  h.set('access-control-allow-methods', 'POST, OPTIONS')
-  h.set('access-control-allow-headers', 'content-type, authorization')
-  h.set('access-control-max-age', '86400')
-  return new Response(res.body, { status: res.status, headers: h })
-}
-
-function normalizeBaseUrl(baseUrl) {
-  const url = (baseUrl || 'https://api.openai.com').trim()
-  return url.endsWith('/') ? url.slice(0, -1) : url
-}
-
-function toOpenAiMessages(history, message) {
-  const list = []
-  if (Array.isArray(history)) {
-    for (const item of history) {
-      const role = item?.role
-      const content = item?.content
-      if ((role === 'user' || role === 'assistant' || role === 'system') && typeof content === 'string') {
-        list.push({ role, content })
-      }
-    }
-  }
-  list.push({ role: 'user', content: String(message ?? '') })
-  return list
+  runtime: 'edge'
 }
 
 export default async function handler(req) {
-  const origin = req.headers.get('origin') || '*'
-
-  if (req.method === 'OPTIONS') {
-    return withCors(new Response(null, { status: 204 }), origin)
-  }
-
   if (req.method !== 'POST') {
-    return withCors(json({ error: 'Only POST is supported.' }, { status: 405 }), origin)
+    return new Response('Method not allowed', { status: 405 })
   }
 
-  const apiKey = process.env.OPENAI_API_KEY
+  const apiKey = process.env.OPENAI_API_KEY || process.env.KIMI_API_KEY
   if (!apiKey) {
-    return withCors(
-      json(
-        {
-          error: 'Missing env: OPENAI_API_KEY. 请在 Vercel 项目环境变量中配置。',
-        },
-        { status: 500 },
-      ),
-      origin,
+    return new Response(
+      JSON.stringify({ error: '未配置 OPENAI_API_KEY 或 KIMI_API_KEY，请在 .env 或 Vercel 环境变量中设置' }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
     )
   }
 
-  let body
-  try {
-    body = await req.json()
-  } catch {
-    return withCors(json({ error: 'Invalid JSON body.' }, { status: 400 }), origin)
-  }
+  const baseURL = (process.env.AI_BASE_URL || process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1').replace(/\/$/, '')
+  const model = process.env.AI_MODEL || process.env.VITE_OPENAI_MODEL || 'gpt-3.5-turbo'
 
-  const message = body?.message
-  const history = body?.history
-  if (typeof message !== 'string' || !message.trim()) {
-    return withCors(json({ error: '`message` must be a non-empty string.' }, { status: 400 }), origin)
-  }
-
-  const baseUrl = normalizeBaseUrl(process.env.OPENAI_BASE_URL)
-  const model = (process.env.OPENAI_MODEL || 'gpt-4o-mini').trim()
-
-  const upstream = await fetch(`${baseUrl}/v1/chat/completions`, {
-    method: 'POST',
-    headers: {
-      authorization: `Bearer ${apiKey}`,
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify({
-      model,
-      messages: toOpenAiMessages(history, message),
-      temperature: 0.7,
-    }),
+  const openai = createOpenAI({
+    baseURL: baseURL.includes('/v1') ? baseURL : `${baseURL}/v1`,
+    apiKey,
+    compatibility: 'compatible'
   })
 
-  const upstreamText = await upstream.text()
+  try {
+    const { messages } = await req.json()
 
-  if (!upstream.ok) {
-    return withCors(
-      json(
-        {
-          error: 'Upstream error.',
-          status: upstream.status,
-          detail: upstreamText,
-        },
-        { status: 502 },
-      ),
-      origin,
+    const result = await streamText({
+      model: openai(model),
+      messages: messages.map(msg => ({
+        role: msg.role,
+        content: msg.content
+      }))
+    })
+
+    let fullText = ''
+    for await (const chunk of result.textStream) {
+      fullText += chunk
+    }
+
+    return new Response(
+      JSON.stringify({ message: fullText }),
+      {
+        headers: { 'Content-Type': 'application/json' }
+      }
+    )
+  } catch (error) {
+    console.error('API Error:', error)
+    return new Response(
+      JSON.stringify({ error: '服务器错误' }),
+      {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' }
+      }
     )
   }
-
-  let upstreamJson
-  try {
-    upstreamJson = JSON.parse(upstreamText)
-  } catch {
-    return withCors(json({ error: 'Upstream returned non-JSON response.' }, { status: 502 }), origin)
-  }
-
-  const reply = upstreamJson?.choices?.[0]?.message?.content
-  return withCors(json({ reply: typeof reply === 'string' ? reply : '' }), origin)
 }
-

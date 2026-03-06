@@ -1,47 +1,30 @@
 <template>
   <div class="chat-container">
-    <!-- 消息列表 -->
-    <div class="messages-container" ref="messagesRef">
-      <div v-if="messages.length === 0" class="empty-state">
-        <p>发送一条消息开始对话吧 🚀</p>
+    <div class="chat-header">
+      <h2>AI 聊天助手</h2>
+    </div>
+
+    <div class="messages" ref="messagesContainer">
+      <div
+        v-for="(msg, index) in messages"
+        :key="index"
+        :class="['message', msg.role]"
+      >
+        <div class="message-content">{{ msg.content }}</div>
       </div>
-      <div v-for="(message, index) in messages" :key="index" class="message">
-        <div class="message-avatar">
-          {{ message.role === "user" ? "👤" : "🤖" }}
-        </div>
-        <div class="message-content">
-          <div class="message-role">
-            {{ message.role === "user" ? "我" : "AI 助手" }}
-          </div>
-          <div class="message-text">{{ message.content }}</div>
-        </div>
-      </div>
-      <!-- 加载中状态 -->
-      <div v-if="isLoading" class="message loading">
-        <div class="message-avatar">🤖</div>
-        <div class="message-content">
-          <div class="message-role">AI 助手</div>
-          <div class="loading-dots">
-            <span>.</span><span>.</span><span>.</span>
-          </div>
-        </div>
+      <div v-if="isLoading" class="message assistant">
+        <div class="message-content">思考中...</div>
       </div>
     </div>
 
-    <!-- 输入框区域 -->
-    <div class="input-container">
-      <textarea
+    <div class="input-area">
+      <input
         v-model="input"
-        @keyup.enter="handleSend"
-        placeholder="输入你的问题，按回车发送..."
+        @keyup.enter="sendMessage"
+        placeholder="输入消息..."
         :disabled="isLoading"
-        class="input-textarea"
-      ></textarea>
-      <button
-        @click="handleSend"
-        :disabled="!input.trim() || isLoading"
-        class="send-button"
-      >
+      />
+      <button @click="sendMessage" :disabled="isLoading || !input.trim()">
         发送
       </button>
     </div>
@@ -49,76 +32,150 @@
 </template>
 
 <script setup>
-import { ref, watch, onMounted } from "vue";
-import { useChat } from "ai/vue";
+import { ref, nextTick } from 'vue'
 
-// 聊天核心逻辑
-const { messages, input, handleSubmit, isLoading } = useChat({
-  api: "/api/chat", // 对接Vercel Edge函数
-  onResponse: () => {
-    // 消息加载完成后滚动到底部
-    scrollToBottom();
-  },
-});
+const messages = ref([])
+const input = ref('')
+const isLoading = ref(false)
+const messagesContainer = ref(null)
 
-// 消息容器Ref，用于滚动
-const messagesRef = ref(null);
-
-// 发送消息
-const handleSend = () => {
-  if (!input.value.trim() || isLoading.value) return;
-  handleSubmit();
-};
-
-// 自动滚动到底部
 const scrollToBottom = () => {
-  if (messagesRef.value) {
-    messagesRef.value.scrollTop = messagesRef.value.scrollHeight;
+  nextTick(() => {
+    if (messagesContainer.value) {
+      messagesContainer.value.scrollTop = messagesContainer.value.scrollHeight
+    }
+  })
+}
+
+const sendMessage = async () => {
+  if (!input.value.trim() || isLoading.value) return
+
+  const userMessage = input.value
+  messages.value.push({ role: 'user', content: userMessage })
+  input.value = ''
+  isLoading.value = true
+  scrollToBottom()
+
+  try {
+    const response = await fetch('/api/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: messages.value })
+    })
+
+    const data = await response.json()
+    messages.value.push({ role: 'assistant', content: data.message })
+  } catch (error) {
+    messages.value.push({
+      role: 'assistant',
+      content: '抱歉，发生了错误，请稍后重试。'
+    })
+  } finally {
+    isLoading.value = false
+    scrollToBottom()
   }
-};
+}
 
-// 监听消息变化，自动滚动
-watch(messages, () => {
-  scrollToBottom();
-});
-
-// 初始化时滚动到底部
-onMounted(() => {
-  scrollToBottom();
-});
 </script>
 
 <style scoped>
 .chat-container {
+  width: 600px;
+  height: 700px;
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.1);
   display: flex;
   flex-direction: column;
-  height: 600px;
-  border: 1px solid #e5e7eb;
-  border-radius: 12px;
-  overflow: hidden;
 }
 
-.messages-container {
+.chat-header {
+  padding: 20px;
+  border-bottom: 1px solid #e5e5e5;
+  text-align: center;
+}
+
+.chat-header h2 {
+  font-size: 20px;
+  color: #333;
+}
+
+.messages {
   flex: 1;
-  padding: 1rem;
   overflow-y: auto;
-  background-color: #f9fafb;
-}
-
-.empty-state {
-  height: 100%;
+  padding: 20px;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #9ca3af;
-  font-size: 1rem;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .message {
   display: flex;
-  gap: 0.8rem;
-  margin-bottom: 1rem;
-  animation: fadeIn 0.3s ease;
+  animation: fadeIn 0.3s;
+}
+
+.message.user {
+  justify-content: flex-end;
+}
+
+.message.assistant {
+  justify-content: flex-start;
+}
+
+.message-content {
+  max-width: 70%;
+  padding: 12px 16px;
+  border-radius: 12px;
+  word-wrap: break-word;
+}
+
+.message.user .message-content {
+  background: #007aff;
+  color: white;
+}
+
+.message.assistant .message-content {
+  background: #f0f0f0;
+  color: #333;
+}
+
+.input-area {
+  padding: 20px;
+  border-top: 1px solid #e5e5e5;
+  display: flex;
+  gap: 10px;
+}
+
+.input-area input {
+  flex: 1;
+  padding: 12px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  font-size: 14px;
+  outline: none;
+}
+
+.input-area input:focus {
+  border-color: #007aff;
+}
+
+.input-area button {
+  padding: 12px 24px;
+  background: #007aff;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.input-area button:hover:not(:disabled) {
+  background: #0056b3;
+}
+
+.input-area button:disabled {
+  background: #ccc;
+  cursor: not-allowed;
 }
 
 @keyframes fadeIn {
@@ -130,116 +187,5 @@ onMounted(() => {
     opacity: 1;
     transform: translateY(0);
   }
-}
-
-.message-avatar {
-  font-size: 1.5rem;
-  width: 40px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-}
-
-.message-content {
-  flex: 1;
-}
-
-.message-role {
-  font-size: 0.8rem;
-  color: #6b7280;
-  margin-bottom: 0.25rem;
-}
-
-.message-text {
-  padding: 0.75rem 1rem;
-  border-radius: 8px;
-  background-color: white;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-  line-height: 1.5;
-}
-
-.message.loading .message-text {
-  background-color: transparent;
-  box-shadow: none;
-}
-
-.loading-dots {
-  display: flex;
-  gap: 0.25rem;
-  padding: 0.75rem 1rem;
-}
-
-.loading-dots span {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background-color: #0070f3;
-  animation: bounce 1.4s infinite ease-in-out both;
-}
-
-.loading-dots span:nth-child(1) {
-  animation-delay: -0.32s;
-}
-.loading-dots span:nth-child(2) {
-  animation-delay: -0.16s;
-}
-
-@keyframes bounce {
-  0%,
-  80%,
-  100% {
-    transform: scale(0);
-  }
-  40% {
-    transform: scale(1);
-  }
-}
-
-.input-container {
-  display: flex;
-  gap: 0.8rem;
-  padding: 1rem;
-  border-top: 1px solid #e5e7eb;
-  background-color: white;
-}
-
-.input-textarea {
-  flex: 1;
-  padding: 0.75rem 1rem;
-  border: 1px solid #d1d5db;
-  border-radius: 8px;
-  resize: none;
-  font-size: 1rem;
-  line-height: 1.5;
-  min-height: 60px;
-  max-height: 200px;
-}
-
-.input-textarea:focus {
-  outline: none;
-  border-color: #0070f3;
-  box-shadow: 0 0 0 2px rgba(0, 112, 243, 0.1);
-}
-
-.send-button {
-  padding: 0.75rem 1.5rem;
-  background-color: #0070f3;
-  color: white;
-  border: none;
-  border-radius: 8px;
-  font-size: 1rem;
-  cursor: pointer;
-  flex-shrink: 0;
-}
-
-.send-button:disabled {
-  background-color: #9ca3af;
-  cursor: not-allowed;
-}
-
-.send-button:not(:disabled):hover {
-  background-color: #0051aa;
 }
 </style>
